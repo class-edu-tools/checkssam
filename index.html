@@ -1,1297 +1,692 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { 
-  Calendar, 
-  Users, 
-  CheckCircle, 
-  AlertTriangle, 
-  Clock, 
-  FileText, 
-  Plus, 
-  Check, 
-  X, 
-  ChevronLeft, 
-  ChevronRight, 
-  CalendarDays,
-  UserCheck,
-  Settings,
-  Upload,
-  Database,
-  Trash2,
-  RefreshCw,
-  Printer
-} from 'lucide-react';
-
-// Default starter students if localstorage is completely empty
-const DEFAULT_STUDENTS = [
-  { id: 1, name: "강민준", seatNo: 1 },
-  { id: 2, name: "김서연", seatNo: 2 },
-  { id: 3, name: "박지우", seatNo: 3 },
-  { id: 4, name: "이도현", seatNo: 4 },
-  { id: 5, name: "정예은", seatNo: 5 },
-  { id: 6, name: "최우진", seatNo: 6 },
-  { id: 7, name: "한지민", seatNo: 7 },
-  { id: 8, name: "윤준서", seatNo: 8 },
-  { id: 9, name: "임하윤", seatNo: 9 },
-  { id: 10, name: "오지호", seatNo: 10 },
-  { id: 11, name: "서아윤", seatNo: 11 },
-  { id: 12, name: "신민재", seatNo: 12 },
-  { id: 13, name: "황유나", seatNo: 13 },
-  { id: 14, name: "안주원", seatNo: 14 },
-  { id: 15, name: "송지아", seatNo: 15 },
-  { id: 16, name: "전민성", seatNo: 16 },
-  { id: 17, name: "홍길동", seatNo: 17 },
-  { id: 18, name: "유제이", seatNo: 18 },
-  { id: 19, name: "고하은", seatNo: 19 },
-  { id: 20, name: "배진우", seatNo: 20 },
-  { id: 21, name: "백지현", seatNo: 21 },
-  { id: 22, name: "곽태양", seatNo: 22 },
-  { id: 23, name: "성민지", seatNo: 23 },
-  { id: 24, name: "조은우", seatNo: 24 },
-  { id: 25, name: "권다은", seatNo: 25 },
-];
-
-// Default baseline logs if localstorage is empty
-const DEFAULT_LOGS = [
-  {
-    id: "log-1",
-    studentId: 17, // 홍길동
-    date: "2026-05-28",
-    status: "absent",
-    type: "sick",
-    memo: "고열 독감으로 인한 결석",
-    isDocumentCompleted: false,
-    createdAt: "2026-05-28",
-    period: null
-  },
-  {
-    id: "log-2",
-    studentId: 2, // 김서연
-    date: "2026-06-01",
-    status: "early",
-    type: "sick",
-    memo: "치과 신경치료 조퇴",
-    isDocumentCompleted: false,
-    createdAt: "2026-06-01",
-    period: "5교시"
-  }
-];
-
-// Helper to get actual today date string (YYYY-MM-DD)
-const getActualTodayDateString = () => {
-  const today = new Date();
-  const yyyy = today.getFullYear();
-  const mm = String(today.getMonth() + 1).padStart(2, '0');
-  const dd = String(today.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-};
-
-export default function App() {
-  // --- STATES & LOCALPERSISTENCE INITIALIZATION ---
-  const [students, setStudents] = useState(() => {
-    const saved = localStorage.getItem('checkssam_students');
-    return saved ? JSON.parse(saved) : DEFAULT_STUDENTS;
-  });
-
-  const [attendanceLogs, setAttendanceLogs] = useState(() => {
-    const saved = localStorage.getItem('checkssam_logs');
-    return saved ? JSON.parse(saved) : DEFAULT_LOGS;
-  });
-
-  // Dynamic Grid Dimensions
-  const [gridRows, setGridRows] = useState(() => {
-    const saved = localStorage.getItem('checkssam_grid_rows');
-    return saved ? parseInt(saved, 10) : 5;
-  });
-
-  const [gridCols, setGridCols] = useState(() => {
-    const saved = localStorage.getItem('checkssam_grid_cols');
-    return saved ? parseInt(saved, 10) : 6;
-  });
-
-  // System Date (Defaults to dynamically generated actual today)
-  const [currentDate, setCurrentDate] = useState(getActualTodayDateString);
-  
-  // Modal & Navigation States
-  const [selectedSeatIndex, setSelectedSeatIndex] = useState(null);
-  const [selectedStudent, setSelectedStudent] = useState(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-
-  // Settings Panel Form States
-  const [settingsRows, setSettingsRows] = useState(gridRows);
-  const [settingsCols, setSettingsCols] = useState(gridCols);
-  const [excelPasteText, setExcelPasteText] = useState("");
-  const [settingsStatusMessage, setSettingsStatusMessage] = useState("");
-
-  // Filter state for logs timeline
-  const [selectedMonth, setSelectedMonth] = useState(() => {
-    const today = new Date();
-    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
-  });
-
-  // Form State inside Attendance Modal
-  const [formStatus, setFormStatus] = useState("present"); // present, absent, late, early
-  const [formType, setFormType] = useState("sick"); // sick, authorized, unauthorized, other
-  const [formMemo, setFormMemo] = useState("");
-  const [formDocCompleted, setFormDocCompleted] = useState(false);
-  const [formPeriod, setFormPeriod] = useState("조례"); // 조례, 1교시 ~ 7교시, 종례
-
-  // Save changes to localStorage automatically on state changes
-  useEffect(() => {
-    localStorage.setItem('checkssam_students', JSON.stringify(students));
-  }, [students]);
-
-  useEffect(() => {
-    localStorage.setItem('checkssam_logs', JSON.stringify(attendanceLogs));
-  }, [attendanceLogs]);
-
-  useEffect(() => {
-    localStorage.setItem('checkssam_grid_rows', gridRows.toString());
-    localStorage.setItem('checkssam_grid_cols', gridCols.toString());
-  }, [gridRows, gridCols]);
-
-  // Sync settings panel inputs with layout values when settings panel opens
-  useEffect(() => {
-    if (isSettingsOpen) {
-      setSettingsRows(gridRows);
-      setSettingsCols(gridCols);
-      setSettingsStatusMessage("");
-    }
-  }, [isSettingsOpen, gridRows, gridCols]);
-
-  // --- DERIVED MEMOIZED VALUES ---
-  
-  // Total Seats count based on current rows & columns setting
-  const totalSeatsCount = useMemo(() => gridRows * gridCols, [gridRows, gridCols]);
-
-  // Seat Layout Mapper: Map index (0 to totalSeats - 1) to corresponding Student Object
-  const seatLayout = useMemo(() => {
-    const layout = Array(totalSeatsCount).fill(null);
-    students.forEach(student => {
-      if (student.seatNo && student.seatNo <= totalSeatsCount) {
-        layout[student.seatNo - 1] = student;
-      }
-    });
-    return layout;
-  }, [students, totalSeatsCount, gridRows, gridCols]);
-
-  // Today's logs mapped by student ID for rapid seating chart lookups
-  const todaysLogsMap = useMemo(() => {
-    const map = {};
-    attendanceLogs
-      .filter(log => log.date === currentDate)
-      .forEach(log => {
-        map[log.studentId] = log;
-      });
-    return map;
-  }, [attendanceLogs, currentDate]);
-
-  // Calculates the smart document follow-up alert color status
-  const calculateDocStatus = (logDateStr, isCompleted, simTodayStr) => {
-    if (isCompleted) return 'completed';
-    
-    const logDate = new Date(logDateStr);
-    const simToday = new Date(simTodayStr);
-    
-    const diffTime = simToday - logDate;
-    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-    
-    if (diffDays >= 3) {
-      return 'overdue'; // 🔴 Overdue (3 days or more since absence)
-    }
-    return 'pending'; // 🟡 Pending (Under 3 days)
-  };
-
-  // Outstanding Documents: All logs historically where documents are still missing
-  const outstandingDocuments = useMemo(() => {
-    return attendanceLogs
-      .filter(log => !log.isDocumentCompleted && (log.status === 'absent' || log.status === 'late' || log.status === 'early'))
-      .map(log => {
-        const student = students.find(s => s.id === log.studentId);
-        const docState = calculateDocStatus(log.date, log.isDocumentCompleted, currentDate);
-        return {
-          ...log,
-          studentName: student ? student.name : "알 수 없음",
-          calculatedStatus: docState
-        };
-      })
-      .sort((a, b) => new Date(a.date) - new Date(b.date)); // Oldest missing documents displayed first
-  }, [attendanceLogs, currentDate, students]);
-
-  // Monthly Logs Grouped by Date
-  const monthlyGroupedLogs = useMemo(() => {
-    const filtered = attendanceLogs.filter(log => log.date.startsWith(selectedMonth));
-    const groups = {};
-    
-    filtered.forEach(log => {
-      if (!groups[log.date]) {
-        groups[log.date] = [];
-      }
-      const student = students.find(s => s.id === log.studentId);
-      groups[log.date].push({
-        ...log,
-        studentName: student ? student.name : "이름 없음",
-        calculatedStatus: calculateDocStatus(log.date, log.isDocumentCompleted, currentDate)
-      });
-    });
-
-    return Object.keys(groups)
-      .sort((a, b) => new Date(b) - new Date(a))
-      .map(date => ({
-        date,
-        logs: groups[date]
-      }));
-  }, [attendanceLogs, selectedMonth, currentDate, students]);
-
-  // --- COMPONENT HANDLERS ---
-
-  const handleSeatClick = (seatIndex) => {
-    const student = seatLayout[seatIndex];
-    if (!student) return; // Ignore empty desk clicks
-    
-    setSelectedSeatIndex(seatIndex);
-    setSelectedStudent(student);
-    
-    const existingLog = todaysLogsMap[student.id];
-    if (existingLog) {
-      setFormStatus(existingLog.status);
-      setFormType(existingLog.type || "sick");
-      setFormMemo(existingLog.memo || "");
-      setFormDocCompleted(existingLog.isDocumentCompleted);
-      setFormPeriod(existingLog.period || (existingLog.status === 'late' ? "조례" : "5교시"));
-    } else {
-      setFormStatus("present");
-      setFormType("sick");
-      setFormMemo("");
-      setFormDocCompleted(false);
-      setFormPeriod("조례");
-    }
-    
-    setIsModalOpen(true);
-  };
-
-  const closeModal = () => {
-    setIsModalOpen(false);
-    setSelectedSeatIndex(null);
-    setSelectedStudent(null);
-  };
-
-  const handleSaveAttendance = () => {
-    if (!selectedStudent) return;
-
-    const existingLogIndex = attendanceLogs.findIndex(
-      log => log.studentId === selectedStudent.id && log.date === currentDate
-    );
-
-    if (formStatus === 'present') {
-      if (existingLogIndex > -1) {
-        const updated = [...attendanceLogs];
-        updated.splice(existingLogIndex, 1);
-        setAttendanceLogs(updated);
-      }
-    } else {
-      const isLateOrEarly = formStatus === 'late' || formStatus === 'early';
-      const newLog = {
-        id: existingLogIndex > -1 ? attendanceLogs[existingLogIndex].id : `log-${Date.now()}`,
-        studentId: selectedStudent.id,
-        date: currentDate,
-        status: formStatus,
-        type: formType,
-        memo: formMemo,
-        isDocumentCompleted: formDocCompleted,
-        period: isLateOrEarly ? formPeriod : null, // Save period info if late or early
-        createdAt: existingLogIndex > -1 ? attendanceLogs[existingLogIndex].createdAt : currentDate
-      };
-
-      if (existingLogIndex > -1) {
-        const updated = [...attendanceLogs];
-        updated[existingLogIndex] = newLog;
-        setAttendanceLogs(updated);
-      } else {
-        setAttendanceLogs([...attendanceLogs, newLog]);
-      }
-    }
-
-    closeModal();
-  };
-
-  const toggleDocumentCompletion = (logId) => {
-    setAttendanceLogs(prev => 
-      prev.map(log => 
-        log.id === logId 
-          ? { ...log, isDocumentCompleted: !log.isDocumentCompleted } 
-          : log
-      )
-    );
-  };
-
-  const handleDateShift = (days) => {
-    const dateObj = new Date(currentDate);
-    dateObj.setDate(dateObj.getDate() + days);
-    const yyyy = dateObj.getFullYear();
-    const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
-    const dd = String(dateObj.getDate()).padStart(2, '0');
-    setCurrentDate(`${yyyy}-${mm}-${dd}`);
-  };
-
-  // Process Excel/Text Paste to batch update students list
-  const handleImportStudents = (isRandomLayout) => {
-    if (!excelPasteText.trim()) {
-      setSettingsStatusMessage("❌ 명단을 텍스트 박스에 입력해주세요.");
-      return;
-    }
-
-    // Split text by lines, commas or tabs (Excel copy standard)
-    const names = excelPasteText
-      .split(/[\n,\t\r]+/)
-      .map(name => name.trim())
-      .filter(name => name.length > 0);
-
-    if (names.length === 0) {
-      setSettingsStatusMessage("❌ 유효한 학생 이름이 발견되지 않았습니다.");
-      return;
-    }
-
-    if (names.length > totalSeatsCount) {
-      setSettingsStatusMessage(`❌ 현재 배치 설정(${gridRows}행 ${gridCols}열 = 총 ${totalSeatsCount}칸)보다 학생 수가 많습니다. 칸수를 먼저 늘려주세요.`);
-      return;
-    }
-
-    // Create seat map indices
-    let seatIndices = Array.from({ length: totalSeatsCount }, (_, i) => i + 1);
-    
-    if (isRandomLayout) {
-      // Shuffle seat indices
-      for (let i = seatIndices.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [seatIndices[i], seatIndices[j]] = [seatIndices[j], seatIndices[i]];
-      }
-    }
-
-    // Map names to students
-    const newStudents = names.map((name, index) => ({
-      id: index + 1,
-      name: name,
-      seatNo: seatIndices[index]
-    }));
-
-    setStudents(newStudents);
-    setGridRows(settingsRows);
-    setGridCols(settingsCols);
-    setExcelPasteText("");
-    setSettingsStatusMessage(`✅ 학생 ${names.length}명이 ${isRandomLayout ? '무작위 랜덤' : '입력하신 순서 그대로'} 배정 및 정렬되었습니다.`);
-  };
-
-  // CSV File parser action
-  const handleCSVUpload = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target.result;
-      const lines = text.split('\n');
-      const parsedNames = [];
-
-      lines.forEach(line => {
-        const columns = line.split(',').map(c => c.trim());
-        if (columns[0] && columns[0].length > 0) {
-          if (columns[0] !== "이름" && columns[0] !== "name") {
-            parsedNames.push(columns[0]);
-          }
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>출결체크쌤 (CheckSsam)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;600;700&display=swap');
+        body {
+            font-family: 'Pretendard', sans-serif;
         }
-      });
-
-      if (parsedNames.length > 0) {
-        if (parsedNames.length > totalSeatsCount) {
-          setSettingsStatusMessage(`❌ CSV의 학생 수가 현재 자리 칸 수(${totalSeatsCount}칸)를 초과합니다.`);
-          return;
-        }
-        const newStudents = parsedNames.map((name, index) => ({
-          id: index + 1,
-          name: name,
-          seatNo: index + 1
-        }));
-        setStudents(newStudents);
-        setGridRows(settingsRows);
-        setGridCols(settingsCols);
-        setSettingsStatusMessage(`✅ CSV 파일에서 ${parsedNames.length}명의 학생을 그대로 수집해 배치 완료했습니다!`);
-      } else {
-        setSettingsStatusMessage("❌ 파일에 이름 데이터가 없거나 파싱에 실패했습니다.");
-      }
-    };
-    reader.readAsText(file);
-  };
-
-  // Reset entire state back to original demo values
-  const handleResetSystem = () => {
-    if (window.confirm("주의! 등록된 학생 정보와 모든 아침 출결 일지가 초기화됩니다. 계속 진행하시겠습니까?")) {
-      setStudents(DEFAULT_STUDENTS);
-      setAttendanceLogs(DEFAULT_LOGS);
-      setGridRows(5);
-      setGridCols(6);
-      setCurrentDate(getActualTodayDateString());
-      localStorage.clear();
-      setSettingsStatusMessage("🔄 데이터가 완벽히 리셋되었습니다.");
-    }
-  };
-
-  // Trigger browser-native PDF export via print stylesheet
-  const handleTriggerPrint = () => {
-    window.print();
-  };
-
-  const getStatusLabel = (status) => {
-    switch(status) {
-      case 'absent': return '결석';
-      case 'late': return '지각';
-      case 'early': return '조퇴';
-      default: return '출석';
-    }
-  };
-
-  // Dynamic Pastel-based Color theme generators
-  const getStatusBadgeStyle = (status) => {
-    switch(status) {
-      case 'absent': return 'bg-rose-50 text-rose-600 border border-rose-200';
-      case 'late': return 'bg-amber-50 text-amber-600 border border-amber-200';
-      case 'early': return 'bg-purple-50 text-purple-600 border border-purple-200';
-      default: return 'bg-slate-50 text-slate-600 border border-slate-200';
-    }
-  };
-
-  // Late Options: Only 조례 ~ 7교시
-  const latePeriods = ['조례', '1교시', '2교시', '3교시', '4교시', '5교시', '6교시', '7교시'];
-  
-  // Early Leave Options: Only 1교시 ~ 종례
-  const earlyPeriods = ['1교시', '2교시', '3교시', '4교시', '5교시', '6교시', '7교시', '종례'];
-
-  return (
-    <div className="min-h-screen bg-[#FAFAFA] text-slate-800 font-sans flex flex-col antialiased">
-      
-      {/* Dynamic Native Print CSS Injection */}
-      <style>{`
+        /* Custom print template optimized for A4 landscape */
         @media print {
-          body {
-            background: #ffffff !important;
-            color: #000000 !important;
-            padding: 0 !important;
-            margin: 0.5cm !important;
-            font-size: 11px !important;
-          }
-          header, footer, button, select, .no-print, input, textarea, .settings-panel-wrap {
-            display: none !important;
-          }
-          .print-container {
-            display: block !important;
-            width: 100% !important;
-          }
-          .print-report-header {
-            display: block !important;
-            margin-bottom: 20px;
-            border-bottom: 2px solid #000;
-            padding-bottom: 10px;
-          }
-          .print-grid {
-            display: grid !important;
-            grid-template-columns: repeat(${gridCols}, minmax(0, 1fr)) !important;
-            gap: 8px !important;
-            margin-bottom: 30px !important;
-          }
-          .print-desk {
-            border: 1px solid #94a3b8 !important;
-            border-radius: 8px !important;
-            padding: 8px !important;
-            text-align: center !important;
-            height: 60px !important;
-            background: #fff !important;
-          }
+            body {
+                background: #ffffff !important;
+                color: #000000 !important;
+                padding: 0 !important;
+                margin: 0.5cm !important;
+            }
+            header, footer, button, select, .no-print, input, textarea, .settings-panel {
+                display: none !important;
+            }
+            .print-container {
+                display: block !important;
+                width: 100% !important;
+            }
+            .print-report-header {
+                display: block !important;
+                margin-bottom: 20px;
+                border-bottom: 1px solid #000000;
+                padding-bottom: 8px;
+            }
+            .print-grid {
+                display: grid !important;
+                gap: 8px !important;
+                margin-bottom: 20px !important;
+            }
+            .print-desk {
+                border: 1px solid #cbd5e1 !important;
+                border-radius: 8px !important;
+                padding: 6px !important;
+                text-align: center !important;
+                height: 55px !important;
+                background: #ffffff !important;
+            }
         }
-      `}</style>
+    </style>
+</head>
+<body class="bg-[#FAFAFA] text-slate-800 min-h-screen flex flex-col antialiased">
 
-      {/* ==================== GLOBAL HEADER ==================== */}
-      <header className="bg-white border-b border-slate-200/80 py-4 px-6 sticky top-0 z-40 shadow-sm no-print">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4">
-          
-          {/* Logo & Brand Details */}
-          <div className="flex items-center gap-3">
-            <div className="bg-blue-50 text-[#3B82F6] p-2.5 rounded-2xl border border-blue-100">
-              <CalendarDays className="w-5.5 h-5.5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-lg font-bold text-slate-800 tracking-tight">출결체크쌤</h1>
-                <span className="text-[10px] font-bold bg-[#E0F2FE] text-[#0369A1] py-0.5 px-2 rounded-full border border-[#BAE6FD]">
-                  개인정보 안심 보장 (Local 저장)
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-400 font-medium mt-0.5">서류 미제출 실시간 자동 추적 및 자리배치형 아침 조회</p>
-            </div>
-          </div>
+    <div id="root"></div>
 
-          {/* Core Settings & Today Calendar Controls */}
-          <div className="flex flex-wrap items-center gap-3 bg-slate-50 p-2 rounded-2xl border border-slate-200/60">
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-600 px-2">
-              <Clock className="w-3.5 h-3.5 text-blue-500" />
-              <span>설정된 날짜:</span>
-              <span className="bg-white px-2 py-0.5 border border-slate-200 rounded font-mono text-slate-800">
-                {currentDate}
-              </span>
-            </div>
-            
-            <div className="flex items-center gap-1">
-              <button 
-                onClick={() => handleDateShift(-1)}
-                className="bg-white hover:bg-slate-100 border border-slate-200 text-xs font-medium py-1 px-2.5 rounded-lg flex items-center gap-0.5"
-                title="하루 전"
-              >
-                <ChevronLeft className="w-3.5 h-3.5" /> 1일
-              </button>
-              <button 
-                onClick={() => handleDateShift(1)}
-                className="bg-white hover:bg-slate-100 border border-slate-200 text-xs font-medium py-1 px-2.5 rounded-lg flex items-center gap-0.5"
-                title="하루 뒤"
-              >
-                1일 <ChevronRight className="w-3.5 h-3.5" />
-              </button>
-              <button 
-                onClick={() => handleDateShift(3)}
-                className="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-bold py-1 px-2.5 rounded-lg flex items-center gap-0.5"
-                title="3일 뒤로 이동하여 기한만료 서류 경고를 테스트합니다."
-              >
-                +3일 시뮬레이션
-              </button>
-              
-              <div className="w-[1px] h-4 bg-slate-200 mx-1"></div>
+    <script type="text/babel">
+        const { useState, useMemo, useEffect } = React;
 
-              <button
-                onClick={handleTriggerPrint}
-                className="bg-white hover:bg-slate-100 border border-slate-200 p-1.5 rounded-lg text-slate-700 font-bold text-xs flex items-center gap-1"
-                title="현재 대시보드를 PDF 혹은 프린터 인쇄물로 즉시 저장합니다."
-              >
-                <Printer className="w-4 h-4 text-emerald-600" />
-                <span>PDF 저장 / 인쇄</span>
-              </button>
+        // --- PURE INLINE SVG ICONS (Fixes React CDN runtime crashes completely) ---
+        const IconCalendarDays = () => <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line><path d="M8 14h.01"></path><path d="M12 14h.01"></path><path d="M16 14h.01"></path><path d="M8 18h.01"></path><path d="M12 18h.01"></path><path d="M16 18h.01"></path></svg>;
+        const IconClock = () => <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>;
+        const IconPrinter = () => <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>;
+        const IconSettings = () => <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>;
+        const IconX = () => <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>;
+        const IconChevronLeft = () => <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>;
+        const IconChevronRight = () => <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>;
+        const IconCheck = () => <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>;
+        const IconCheckCircle = () => <svg class="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>;
+        const IconAlertTriangle = () => <svg class="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>;
+        const IconUserCheck = () => <svg class="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><polyline points="17 11 19 13 23 9"></polyline></svg>;
+        const IconFileText = () => <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>;
+        const IconUpload = () => <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>;
+        const IconTrash = () => <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>;
+        const IconCalendar = () => <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>;
 
-              <button
-                onClick={() => setIsSettingsOpen(!isSettingsOpen)}
-                className={`p-1.5 rounded-lg border flex items-center gap-1.5 text-xs font-bold transition-all ${
-                  isSettingsOpen 
-                    ? 'bg-blue-50 border-blue-200 text-blue-600' 
-                    : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-700'
-                }`}
-                title="교실 자리 배치 및 학생 이름 관리"
-              >
-                <Settings className="w-4 h-4" />
-                <span>배치/학생 설정</span>
-              </button>
-            </div>
-          </div>
+        // Baseline Data
+        const DEFAULT_STUDENTS = [
+            { id: 1, name: "강민준", seatNo: 1 }, { id: 2, name: "김서연", seatNo: 2 }, { id: 3, name: "박지우", seatNo: 3 },
+            { id: 4, name: "이도현", seatNo: 4 }, { id: 5, name: "정예은", seatNo: 5 }, { id: 6, name: "최우진", seatNo: 6 },
+            { id: 7, name: "한지민", seatNo: 7 }, { id: 8, name: "윤준서", seatNo: 8 }, { id: 9, name: "임하윤", seatNo: 9 },
+            { id: 10, name: "오지호", seatNo: 10 }, { id: 11, name: "서아윤", seatNo: 11 }, { id: 12, name: "신민재", seatNo: 12 },
+            { id: 13, name: "황유나", seatNo: 13 }, { id: 14, name: "안주원", seatNo: 14 }, { id: 15, name: "송지아", seatNo: 15 },
+            { id: 16, name: "전민성", seatNo: 16 }, { id: 17, name: "홍길동", seatNo: 17 }, { id: 18, name: "유제이", seatNo: 18 },
+            { id: 19, name: "고하은", seatNo: 19 }, { id: 20, name: "배진우", seatNo: 20 }, { id: 21, name: "백지현", seatNo: 21 },
+            { id: 22, name: "곽태양", seatNo: 22 }, { id: 23, name: "성민지", seatNo: 23 }, { id: 24, name: "조은우", seatNo: 24 },
+            { id: 25, name: "권다은", seatNo: 25 },
+        ];
 
-        </div>
-      </header>
+        const DEFAULT_LOGS = [
+            { id: "log-1", studentId: 17, date: "2026-05-28", status: "absent", type: "sick", memo: "고열 독감으로 인한 결석", isDocumentCompleted: false, period: null },
+            { id: "log-2", studentId: 2, date: "2026-06-01", status: "early", type: "sick", memo: "치과 진료 조퇴", isDocumentCompleted: false, period: "5교시" }
+        ];
 
-      {/* ==================== PRINT-ONLY HEADER BANNER ==================== */}
-      <div className="hidden print:block print-report-header">
-        <div className="flex justify-between items-end">
-          <div>
-            <h1 className="text-xl font-bold text-black">출결체크쌤 학급 일일 출결 리포트</h1>
-            <p className="text-xs text-slate-600 mt-1">우리 반 학생들의 자리 배치 및 지각/조퇴/결석 및 증빙서류 관리 대장</p>
-          </div>
-          <div className="text-right text-xs">
-            <p><strong>조사 일시:</strong> {currentDate}</p>
-            <p><strong>인쇄 일자:</strong> {new Date().toLocaleDateString()}</p>
-          </div>
-        </div>
-      </div>
+        const getActualTodayDateString = () => {
+            const today = new Date();
+            const yyyy = today.getFullYear();
+            const mm = String(today.getMonth() + 1).padStart(2, '0');
+            const dd = String(today.getDate()).padStart(2, '0');
+            return `${yyyy}-${mm}-${dd}`;
+        };
 
-      {/* ==================== MAIN WORKSPACE ==================== */}
-      <main className="max-w-7xl mx-auto w-full p-4 md:p-6 flex-1 flex flex-col gap-6">
+        // --- HELPERS (Restored & Fixed) ---
+        const getTypeLabel = (type) => {
+            switch(type) {
+                case 'sick': return '질병';
+                case 'authorized': return '인정';
+                case 'unauthorized': return '미인정';
+                default: return '기타';
+            }
+        };
 
-        {/* ==================== 1. OPTIONAL SETTINGS / BATCH IMPORT SECTION ==================== */}
-        {isSettingsOpen && (
-          <section className="bg-white border border-slate-200/95 rounded-2xl p-5 shadow-sm animate-in fade-in slide-in-from-top-1 duration-200 no-print">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3 mb-4">
-              <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                <Settings className="w-4 h-4 text-slate-500" />
-                자리배치 및 학생 정보 커스텀 관리
-              </h3>
-              <button 
-                onClick={() => setIsSettingsOpen(false)}
-                className="text-slate-400 hover:text-slate-600 p-1"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+        const getTypeColorClass = (type) => {
+            switch(type) {
+                case 'sick': return 'bg-rose-50 text-rose-700 border border-rose-100';
+                case 'authorized': return 'bg-emerald-50 text-emerald-700 border border-emerald-100';
+                case 'unauthorized': return 'bg-slate-50 text-slate-700 border border-slate-200';
+                default: return 'bg-purple-50 text-purple-700 border border-purple-100';
+            }
+        };
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              
-              {/* Part A: Grid Rows & Columns Count */}
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/70 flex flex-col gap-3">
-                <h4 className="text-xs font-bold text-slate-700">① 배치도 줄/칸 개수 조절</h4>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] font-medium text-slate-500 mb-1">세로 줄(행) 수</label>
-                    <input 
-                      type="number" 
-                      min="2" 
-                      max="10"
-                      value={settingsRows}
-                      onChange={(e) => setSettingsRows(parseInt(e.target.value, 10) || 5)}
-                      className="w-full bg-white border border-slate-200 rounded-lg p-2 text-sm font-bold"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-medium text-slate-500 mb-1">가로 칸(열) 수</label>
-                    <input 
-                      type="number" 
-                      min="2" 
-                      max="12"
-                      value={settingsCols}
-                      onChange={(e) => setSettingsCols(parseInt(e.target.value, 10) || 6)}
-                      className="w-full bg-white border border-slate-200 rounded-lg p-2 text-sm font-bold"
-                    />
-                  </div>
-                </div>
-                <p className="text-[10px] text-slate-400 mt-1">
-                  * 가로 칸과 세로 줄수를 바꾸면 교실 격자가 즉시 동적으로 생성됩니다.
-                </p>
-              </div>
+        function App() {
+            // LocalStorage Core
+            const [students, setStudents] = useState(() => {
+                const saved = localStorage.getItem('checkssam_students');
+                return saved ? JSON.parse(saved) : DEFAULT_STUDENTS;
+            });
+            const [attendanceLogs, setAttendanceLogs] = useState(() => {
+                const saved = localStorage.getItem('checkssam_logs');
+                return saved ? JSON.parse(saved) : DEFAULT_LOGS;
+            });
+            const [gridRows, setGridRows] = useState(() => {
+                const saved = localStorage.getItem('checkssam_grid_rows');
+                return saved ? parseInt(saved, 10) : 5;
+            });
+            const [gridCols, setGridCols] = useState(() => {
+                const saved = localStorage.getItem('checkssam_grid_cols');
+                return saved ? parseInt(saved, 10) : 6;
+            });
 
-              {/* Part B: Text/Excel Bulk Copy-Paste */}
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/70 flex flex-col gap-2">
-                <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                  <Upload className="w-3.5 h-3.5" />
-                  ② 명렬 붙여넣기 및 배치 선택
-                </h4>
-                <textarea
-                  rows="3"
-                  value={excelPasteText}
-                  onChange={(e) => setExcelPasteText(e.target.value)}
-                  placeholder="강민준, 김서연, 박지우..."
-                  className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs font-medium resize-none focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
-                />
+            const [currentDate, setCurrentDate] = useState(getActualTodayDateString);
+            const [selectedSeatIndex, setSelectedSeatIndex] = useState(null);
+            const [selectedStudent, setSelectedStudent] = useState(null);
+            const [isModalOpen, setIsModalOpen] = useState(false);
+            const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+            const [settingsRows, setSettingsRows] = useState(gridRows);
+            const [settingsCols, setSettingsCols] = useState(gridCols);
+            const [excelPasteText, setExcelPasteText] = useState("");
+            const [settingsStatusMessage, setSettingsStatusMessage] = useState("");
+
+            const [selectedMonth, setSelectedMonth] = useState(() => {
+                const today = new Date();
+                return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+            });
+
+            // Form states
+            const [formStatus, setFormStatus] = useState("present");
+            const [formType, setFormType] = useState("sick");
+            const [formMemo, setFormMemo] = useState("");
+            const [formDocCompleted, setFormDocCompleted] = useState(false);
+            const [formPeriod, setFormPeriod] = useState("조례");
+
+            useEffect(() => { localStorage.setItem('checkssam_students', JSON.stringify(students)); }, [students]);
+            useEffect(() => { localStorage.setItem('checkssam_logs', JSON.stringify(attendanceLogs)); }, [attendanceLogs]);
+            useEffect(() => {
+                localStorage.setItem('checkssam_grid_rows', gridRows.toString());
+                localStorage.setItem('checkssam_grid_cols', gridCols.toString());
+            }, [gridRows, gridCols]);
+
+            const totalSeatsCount = useMemo(() => gridRows * gridCols, [gridRows, gridCols]);
+
+            const seatLayout = useMemo(() => {
+                const layout = Array(totalSeatsCount).fill(null);
+                students.forEach(student => {
+                    if (student.seatNo && student.seatNo <= totalSeatsCount) {
+                        layout[student.seatNo - 1] = student;
+                    }
+                });
+                return layout;
+            }, [students, totalSeatsCount, gridRows, gridCols]);
+
+            const todaysLogsMap = useMemo(() => {
+                const map = {};
+                attendanceLogs.filter(log => log.date === currentDate).forEach(log => { map[log.studentId] = log; });
+                return map;
+            }, [attendanceLogs, currentDate]);
+
+            const calculateDocStatus = (logDateStr, isCompleted, simTodayStr) => {
+                if (isCompleted) return 'completed';
+                const logDate = new Date(logDateStr);
+                const simToday = new Date(simTodayStr);
+                const diffDays = Math.floor((simToday - logDate) / (1000 * 60 * 60 * 24));
+                return diffDays >= 3 ? 'overdue' : 'pending';
+            };
+
+            const outstandingDocuments = useMemo(() => {
+                return attendanceLogs
+                    .filter(log => !log.isDocumentCompleted && (log.status === 'absent' || log.status === 'late' || log.status === 'early'))
+                    .map(log => {
+                        const student = students.find(s => s.id === log.studentId);
+                        return {
+                            ...log,
+                            studentName: student ? student.name : "알 수 없음",
+                            calculatedStatus: calculateDocStatus(log.date, log.isDocumentCompleted, currentDate)
+                        };
+                    })
+                    .sort((a, b) => new Date(a.date) - new Date(b.date));
+            }, [attendanceLogs, currentDate, students]);
+
+            const monthlyGroupedLogs = useMemo(() => {
+                const filtered = attendanceLogs.filter(log => log.date.startsWith(selectedMonth));
+                const groups = {};
+                filtered.forEach(log => {
+                    if (!groups[log.date]) groups[log.date] = [];
+                    const student = students.find(s => s.id === log.studentId);
+                    groups[log.date].push({
+                        ...log,
+                        studentName: student ? student.name : "이름 없음",
+                        calculatedStatus: calculateDocStatus(log.date, log.isDocumentCompleted, currentDate)
+                    });
+                });
+                return Object.keys(groups)
+                    .sort((a, b) => new Date(b) - new Date(a))
+                    .map(date => ({ date, logs: groups[date] }));
+            }, [attendanceLogs, selectedMonth, currentDate, students]);
+
+            const handleSeatClick = (seatIndex) => {
+                const student = seatLayout[seatIndex];
+                if (!student) return;
                 
-                {/* Visual Import Helper */}
-                <div className="bg-[#EFF6FF] border border-blue-100 p-2.5 rounded-lg text-[10px] text-blue-700 leading-relaxed font-medium">
-                  <strong>💡 붙여넣기 팁:</strong><br />
-                  - <strong>엑셀(Excel) 복사:</strong> 이름 열을 세로로 복사해서 그대로 붙여넣으면 됩니다.<br />
-                  - <strong>직접 작성:</strong> 줄바꿈(엔터)이나 쉼표(,)로 이름을 구분해서 적어주세요.
-                </div>
+                setSelectedSeatIndex(seatIndex);
+                setSelectedStudent(student);
+                
+                const existingLog = todaysLogsMap[student.id];
+                if (existingLog) {
+                    setFormStatus(existingLog.status);
+                    setFormType(existingLog.type || "sick");
+                    setFormMemo(existingLog.memo || "");
+                    setFormDocCompleted(existingLog.isDocumentCompleted);
+                    setFormPeriod(existingLog.period || (existingLog.status === 'late' ? "조례" : "1교시"));
+                } else {
+                    setFormStatus("present");
+                    setFormType("sick");
+                    setFormMemo("");
+                    setFormDocCompleted(false);
+                    setFormPeriod("조례");
+                }
+                setIsModalOpen(true);
+            };
 
-                <div className="grid grid-cols-2 gap-2 mt-1">
-                  <button
-                    onClick={() => handleImportStudents(false)}
-                    className="bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 text-[11px] font-bold py-2 rounded-lg flex items-center justify-center gap-1 transition-all"
-                    title="입력된 명렬 그대로 앞자리(1번 좌석)부터 순서대로 배정합니다."
-                  >
-                    🔢 명렬순 그대로 배치
-                  </button>
-                  <button
-                    onClick={() => handleImportStudents(true)}
-                    className="bg-blue-500 hover:bg-blue-600 text-white text-[11px] font-bold py-2 rounded-lg flex items-center justify-center gap-1 transition-all"
-                    title="입력한 명단을 무작위 랜덤으로 섞어 좌석에 배정합니다."
-                  >
-                    🎲 랜덤 자리 배치
-                  </button>
-                </div>
-              </div>
+            const handleSaveAttendance = () => {
+                if (!selectedStudent) return;
+                const existingLogIndex = attendanceLogs.findIndex(log => log.studentId === selectedStudent.id && log.date === currentDate);
 
-              {/* Part C: File Upload & Reset Actions */}
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/70 flex flex-col justify-between gap-3">
-                <div>
-                  <h4 className="text-xs font-bold text-slate-700 mb-2">③ CSV 파일 업로드 또는 리셋</h4>
-                  <label className="flex flex-col items-center justify-center w-full h-16 border border-dashed border-slate-300 rounded-lg bg-white cursor-pointer hover:bg-slate-50">
-                    <div className="flex flex-col items-center justify-center pt-2">
-                      <Upload className="w-5 h-5 text-slate-400 mb-1" />
-                      <p className="text-[10px] font-medium text-slate-500">학생명단 .csv 파일 가져오기</p>
-                    </div>
-                    <input 
-                      type="file" 
-                      accept=".csv" 
-                      onChange={handleCSVUpload} 
-                      className="hidden" 
-                    />
-                  </label>
-                </div>
+                if (formStatus === 'present') {
+                    if (existingLogIndex > -1) {
+                        const updated = [...attendanceLogs];
+                        updated.splice(existingLogIndex, 1);
+                        setAttendanceLogs(updated);
+                    }
+                } else {
+                    const isLateOrEarly = formStatus === 'late' || formStatus === 'early';
+                    const newLog = {
+                        id: existingLogIndex > -1 ? attendanceLogs[existingLogIndex].id : `log-${Date.now()}`,
+                        studentId: selectedStudent.id,
+                        date: currentDate,
+                        status: formStatus,
+                        type: formType,
+                        memo: formMemo,
+                        isDocumentCompleted: formDocCompleted,
+                        period: isLateOrEarly ? formPeriod : null
+                    };
+                    if (existingLogIndex > -1) {
+                        const updated = [...attendanceLogs];
+                        updated[existingLogIndex] = newLog;
+                        setAttendanceLogs(updated);
+                    } else {
+                        setAttendanceLogs([...attendanceLogs, newLog]);
+                    }
+                }
+                closeModal();
+            };
 
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleResetSystem}
-                    className="flex-1 bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200 text-xs font-bold py-2 rounded-lg flex items-center justify-center gap-1 transition-all"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" /> 전체 데이터 리셋
-                  </button>
-                  <button
-                    onClick={() => {
-                      setGridRows(settingsRows);
-                      setGridCols(settingsCols);
-                      setIsSettingsOpen(false);
-                    }}
-                    className="flex-1 bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200 text-xs font-bold py-2 rounded-lg flex items-center justify-center gap-1 transition-all"
-                  >
-                    확인 및 닫기
-                  </button>
-                </div>
-              </div>
+            const toggleDocumentCompletion = (logId) => {
+                setAttendanceLogs(prev => prev.map(log => log.id === logId ? { ...log, isDocumentCompleted: !log.isDocumentCompleted } : log));
+            };
 
-            </div>
+            const handleImportStudents = (isRandomLayout) => {
+                if (!excelPasteText.trim()) {
+                    setSettingsStatusMessage("❌ 명단을 입력해주세요.");
+                    return;
+                }
+                const names = excelPasteText.split(/[\n,\t\r]+/).map(n => n.trim()).filter(n => n.length > 0);
+                if (names.length === 0) {
+                    setSettingsStatusMessage("❌ 올바른 이름이 없습니다.");
+                    return;
+                }
+                if (names.length > totalSeatsCount) {
+                    setSettingsStatusMessage(`❌ 자리가 부족합니다. 칸수를 더 늘려주세요.`);
+                    return;
+                }
 
-            {settingsStatusMessage && (
-              <div className="mt-3 bg-blue-50/50 border border-blue-100 text-blue-700 text-xs font-bold p-2.5 rounded-lg">
-                {settingsStatusMessage}
-              </div>
-            )}
-          </section>
-        )}
+                let seatIndices = Array.from({ length: totalSeatsCount }, (_, i) => i + 1);
+                if (isRandomLayout) {
+                    for (let i = seatIndices.length - 1; i > 0; i--) {
+                        const j = Math.floor(Math.random() * (i + 1));
+                        [seatIndices[i], seatIndices[j]] = [seatIndices[j], seatIndices[i]];
+                    }
+                }
 
-        {/* ==================== 2. (TOP/MAIN) CLASSROOM SEATING CHART ==================== */}
-        <section className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-sm flex flex-col gap-4">
-          
-          {/* Seating Header */}
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 border-b border-slate-100 pb-3 no-print">
-            <div>
-              <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
-                🏫 우리 반 교실 자리배치도 
-                <span className="text-xs font-medium text-slate-400">({gridRows}행 {gridCols}열 구조)</span>
-              </h2>
-              <p className="text-xs text-slate-400 mt-0.5">
-                안 온 학생 자리를 툭 누르면 간편하게 지각/결석/조퇴 상태를 기록할 수 있습니다.
-              </p>
-            </div>
+                const newStudents = names.map((name, index) => ({ id: index + 1, name, seatNo: seatIndices[index] }));
+                setStudents(newStudents);
+                setGridRows(settingsRows);
+                setGridCols(settingsCols);
+                setExcelPasteText("");
+                setSettingsStatusMessage(`✅ 학생 ${names.length}명의 자리가 배정되었습니다.`);
+            };
 
-            {/* Attendance Colored Legends */}
-            <div className="flex flex-wrap items-center gap-2 text-[10px] font-bold">
-              <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-slate-50 border border-slate-200 text-slate-500">
-                <span className="w-2 h-2 rounded-full bg-slate-200"></span>출석
-              </span>
-              <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-rose-50 border border-rose-200 text-rose-600">
-                <span className="w-2 h-2 rounded-full bg-rose-400"></span>결석
-              </span>
-              <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-600">
-                <span className="w-2 h-2 rounded-full bg-amber-400"></span>지각
-              </span>
-              <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-purple-50 border border-purple-200 text-purple-600">
-                <span className="w-2 h-2 rounded-full bg-purple-400"></span>조퇴
-              </span>
-              <span className="bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded">
-                🚨 서류 미제출!
-              </span>
-              <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">
-                ⏳ 서류 대기중
-              </span>
-            </div>
-          </div>
+            const handleCSVUpload = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const lines = event.target.result.split('\n');
+                    const parsedNames = [];
+                    lines.forEach(line => {
+                        const columns = line.split(',').map(c => c.trim());
+                        if (columns[0] && columns[0].length > 0 && columns[0] !== "이름" && columns[0] !== "name") {
+                            parsedNames.push(columns[0]);
+                        }
+                    });
+                    if (parsedNames.length > 0) {
+                        const newStudents = parsedNames.map((name, index) => ({ id: index + 1, name, seatNo: index + 1 }));
+                        setStudents(newStudents);
+                        setGridRows(settingsRows);
+                        setGridCols(settingsCols);
+                    }
+                };
+                reader.readAsText(file);
+            };
 
-          {/* Teacher Blackboard Direction Indicator */}
-          <div className="w-full max-w-xs mx-auto text-center py-1 bg-slate-50 border border-slate-200 text-slate-500 font-bold text-[10px] rounded-lg tracking-wider no-print">
-            칠판 / 앞교실 방향
-          </div>
+            const handleResetSystem = () => {
+                if (window.confirm("주의! 등록된 모든 학급 데이터가 삭제됩니다.")) {
+                    setStudents(DEFAULT_STUDENTS);
+                    setAttendanceLogs(DEFAULT_LOGS);
+                    setGridRows(5);
+                    setGridCols(6);
+                    setCurrentDate(getActualTodayDateString());
+                    localStorage.clear();
+                }
+            };
 
-          {/* Dynamic Responsive Desk Grid (Standard + Print optimal) */}
-          <div 
-            className="grid gap-3.5 print-grid"
-            style={{ 
-              gridTemplateColumns: `repeat(${gridCols}, minmax(0, 1fr))` 
-            }}
-          >
-            {seatLayout.map((student, index) => {
-              const todayLog = student ? todaysLogsMap[student.id] : null;
-              
-              return (
-                <div
-                  key={index}
-                  onClick={() => handleSeatClick(index)}
-                  className={`h-20 border rounded-xl p-2.5 flex flex-col justify-between cursor-pointer transition-all duration-100 print-desk ${
-                    student 
-                      ? 'bg-white hover:bg-slate-50/70 border-slate-200 shadow-sm' 
-                      : 'bg-slate-50 border-dashed border-slate-200 text-slate-300 cursor-not-allowed justify-center items-center'
-                  }`}
-                >
-                  {student ? (
-                    <>
-                      {/* Desk Header row */}
-                      <div className="flex justify-between items-center text-[10px]">
-                        <span className="font-mono font-medium text-slate-400">#{student.seatNo}</span>
-                        {todayLog && (
-                          <span className={`font-bold px-1.5 py-0.1 rounded text-[9px] ${getStatusBadgeStyle(todayLog.status)}`}>
-                            {getStatusLabel(todayLog.status)}{todayLog.period ? ` (${todayLog.period})` : ''}
-                          </span>
-                        )}
-                      </div>
+            const closeModal = () => { setIsModalOpen(false); setSelectedSeatIndex(null); setSelectedStudent(null); };
+            const handleTriggerPrint = () => { window.print(); };
+            const handleDateShift = (d) => {
+                const dateObj = new Date(currentDate);
+                dateObj.setDate(dateObj.getDate() + d);
+                setCurrentDate(`${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`);
+            };
 
-                      {/* Name area */}
-                      <div className="text-center font-bold text-sm text-slate-800">
-                        {student.name}
-                      </div>
+            const getStatusBadgeStyle = (status) => {
+                if (status === 'absent') return 'bg-rose-50 text-rose-600 border border-rose-100';
+                if (status === 'late') return 'bg-amber-50 text-amber-600 border border-amber-100';
+                return 'bg-purple-50 text-purple-600 border border-purple-100';
+            };
 
-                      {/* Bottom Status indicators */}
-                      <div className="flex justify-center items-center h-4">
-                        {todayLog ? (
-                          todayLog.isDocumentCompleted ? (
-                            <span className="text-[9px] font-medium text-emerald-600 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-100 flex items-center gap-0.5">
-                              <CheckCircle className="w-2.5 h-2.5" /> 서류완료
-                            </span>
-                          ) : (
-                            (() => {
-                              const docState = calculateDocStatus(todayLog.date, todayLog.isDocumentCompleted, currentDate);
-                              return docState === 'overdue' ? (
-                                <span className="text-[9px] font-bold text-rose-700 bg-rose-50 px-1.5 py-0.2 rounded border border-rose-100 flex items-center gap-0.5 animate-pulse">
-                                  <AlertTriangle className="w-2.5 h-2.5 text-rose-500" /> 서류미제출!
-                                </span>
-                              ) : (
-                                <span className="text-[9px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-100 flex items-center gap-0.5">
-                                  <Clock className="w-2.5 h-2.5 text-amber-500" /> 서류대기
-                                </span>
-                              );
-                            })()
-                          )
-                        ) : (
-                          <span className="text-[9px] text-slate-400 font-medium flex items-center gap-0.5">
-                            <UserCheck className="w-2.5 h-2.5 text-emerald-500" /> 등교완료
-                          </span>
-                        )}
-                      </div>
-                    </>
-                  ) : (
-                    <span className="text-[10px] font-medium text-slate-400">빈자리</span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+            const latePeriods = ['조례', '1교시', '2교시', '3교시', '4교시', '5교시', '6교시', '7교시'];
+            const earlyPeriods = ['1교시', '2교시', '3교시', '4교시', '5교시', '6교시', '7교시', '종례'];
 
-        </section>
+            return (
+                <div class="flex flex-col min-h-screen">
+                    {/* Header */}
+                    <header class="bg-white border-b border-slate-200 py-4 px-6 sticky top-0 z-40 no-print">
+                        <div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4">
+                            <div class="flex items-center gap-3">
+                                <div class="bg-blue-50 text-[#3B82F6] p-2.5 rounded-2xl border border-blue-100">
+                                    <IconCalendarDays />
+                                </div>
+                                <div>
+                                    <div class="flex items-center gap-2">
+                                        <h1 class="text-base font-bold text-slate-800 tracking-tight">출결체크쌤</h1>
+                                        <span class="text-[10px] font-bold bg-[#E0F2FE] text-[#0369A1] py-0.5 px-2 rounded-full border border-[#BAE6FD]">로컬 데이터 보안 모드</span>
+                                    </div>
+                                    <p class="text-[11px] text-slate-400 font-medium mt-0.5">학교 서버 우회 없이 브라우저에 직접 저장되는 학급 전용 소통창</p>
+                                </div>
+                            </div>
 
-        {/* ==================== 3. HORIZONTAL DUAL VIEW PANELS ==================== */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                            <div class="flex flex-wrap items-center gap-3 bg-slate-50 p-2 rounded-2xl border border-slate-200/60">
+                                <div class="flex items-center gap-2 text-xs font-bold text-slate-600 px-2">
+                                    <IconClock />
+                                    <span>오늘 날짜:</span>
+                                    <span class="bg-white px-2 py-0.5 border border-slate-200 rounded font-mono text-slate-800">{currentDate}</span>
+                                </div>
+                                <div class="flex items-center gap-1">
+                                    <button onClick={() => handleDateShift(-1)} class="bg-white hover:bg-slate-100 border border-slate-200 text-xs font-medium py-1 px-2.5 rounded-lg flex items-center gap-0.5"><IconChevronLeft />1일</button>
+                                    <button onClick={() => handleDateShift(1)} class="bg-white hover:bg-slate-100 border border-slate-200 text-xs font-medium py-1 px-2.5 rounded-lg flex items-center gap-0.5">1일<IconChevronRight /></button>
+                                    <button onClick={() => handleDateShift(3)} class="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-100 text-xs font-bold py-1 px-2.5 rounded-lg">+3일 테스트</button>
+                                    <div class="w-[1px] h-4 bg-slate-200 mx-1"></div>
+                                    <button onClick={handleTriggerPrint} class="bg-white hover:bg-slate-100 border border-slate-200 p-1.5 rounded-lg text-slate-700 font-bold text-xs flex items-center gap-1"><IconPrinter /><span>PDF 인쇄</span></button>
+                                    <button onClick={() => setIsSettingsOpen(!isSettingsOpen)} class={`p-1.5 rounded-lg border flex items-center gap-1.5 text-xs font-bold transition-all ${isSettingsOpen ? 'bg-blue-50 border-blue-200 text-blue-600' : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-700'}`}><IconSettings /><span>배치/명렬 설정</span></button>
+                                </div>
+                            </div>
+                        </div>
+                    </header>
 
-          {/* Left panel: Missing Documents Tracker (4 cols) */}
-          <div className="lg:col-span-5 bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm flex flex-col gap-4">
-            
-            <div className="border-b border-slate-100 pb-3">
-              <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                <FileText className="w-4 h-4 text-rose-500" />
-                미제출 서류 추적 보관함
-                <span className="bg-rose-50 text-rose-600 text-[10px] py-0.5 px-2 rounded-full border border-rose-100 font-bold">
-                  미비 {outstandingDocuments.length}건
-                </span>
-              </h2>
-              <p className="text-[10px] text-slate-400 mt-1">
-                시간이 지났으나 결석계, 처방전 등이 수거되지 않은 학생들입니다.
-              </p>
-            </div>
-
-            {outstandingDocuments.length === 0 ? (
-              <div className="py-8 text-center text-slate-400 font-bold bg-slate-50/50 rounded-xl border border-dashed border-slate-200 flex flex-col items-center justify-center gap-1">
-                <CheckCircle className="w-6 h-6 text-emerald-400" />
-                <span className="text-xs">밀리거나 미제출된 서류가 전혀 없습니다!</span>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-2.5 max-h-[350px] overflow-y-auto pr-1">
-                {outstandingDocuments.map(log => (
-                  <div 
-                    key={log.id} 
-                    className={`border rounded-xl p-3 flex flex-col justify-between gap-2.5 ${
-                      log.calculatedStatus === 'overdue' 
-                        ? 'bg-rose-50/50 border-rose-100' 
-                        : 'bg-amber-50/50 border-amber-100'
-                    }`}
-                  >
-                    <div>
-                      <div className="flex justify-between items-start">
-                        <span className="font-bold text-sm text-slate-800">{log.studentName}</span>
-                        <span className="text-[10px] font-mono font-bold bg-white px-2 py-0.5 border border-slate-200 rounded">
-                          {log.date}
-                        </span>
-                      </div>
-                      
-                      <div className="flex flex-wrap gap-1.5 mt-1.5">
-                        <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${getStatusBadgeStyle(log.status)}`}>
-                          {getStatusLabel(log.status)}{log.period ? ` (${log.period})` : ''}
-                        </span>
-                        <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${getTypeColorClass(log.type)}`}>
-                          {getTypeLabel(log.type)} 사유
-                        </span>
-                        {log.calculatedStatus === 'overdue' ? (
-                          <span className="text-[9px] font-bold bg-rose-100 text-rose-700 px-1.5 py-0.2 rounded border border-rose-200">
-                            🚨 3일 경과! 미제출
-                          </span>
-                        ) : (
-                          <span className="text-[9px] font-bold bg-amber-100 text-amber-700 px-1.5 py-0.2 rounded border border-amber-200">
-                            ⏳ 기한 대기
-                          </span>
-                        )}
-                      </div>
-
-                      <p className="text-[11px] text-slate-500 bg-white/70 p-2 rounded-lg border border-slate-100 mt-2 italic">
-                        "{log.memo || '사유가 아직 기록되지 않았습니다.'}"
-                      </p>
+                    {/* Print Preview Header */}
+                    <div class="hidden print:block print-report-header">
+                        <div class="flex justify-between items-end">
+                            <div>
+                                <h1 class="text-lg font-bold text-black">출결체크쌤 학급 일일 출결 리포트</h1>
+                                <p class="text-xs text-slate-500 mt-0.5">우리 반 학생들의 좌석 배치도 및 사후 증빙서류 보관 대장</p>
+                            </div>
+                            <div class="text-right text-xs">
+                                <p><strong>조사 일자:</strong> {currentDate}</p>
+                            </div>
+                        </div>
                     </div>
 
-                    <button
-                      onClick={() => toggleDocumentCompletion(log.id)}
-                      className="w-full bg-[#10B981] hover:bg-emerald-600 text-white font-bold text-xs py-1.5 px-3 rounded-lg flex items-center justify-center gap-1 transition-colors shadow-sm no-print"
-                    >
-                      <Check className="w-3.5 h-3.5" /> 서류 수거 완료 처리
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
+                    {/* Main Container */}
+                    <main class="max-w-7xl mx-auto w-full p-4 md:p-6 flex-1 flex flex-col gap-6">
+                        
+                        {/* Settings Drawer */}
+                        {isSettingsOpen && (
+                            <section class="bg-white border border-slate-200 rounded-2xl p-5 animate-in fade-in slide-in-from-top-1 duration-200 no-print">
+                                <div class="flex justify-between items-center border-b border-slate-100 pb-3 mb-4">
+                                    <h3 class="text-xs font-bold text-slate-800 flex items-center gap-2"><IconSettings />교실 구조 변경 및 엑셀 명렬 업데이트</h3>
+                                    <button onClick={() => setIsSettingsOpen(false)} class="text-slate-400 hover:text-slate-600 p-1"><IconX /></button>
+                                </div>
+                                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                    <div class="bg-slate-50 p-4 rounded-xl border border-slate-100 flex flex-col gap-3">
+                                        <h4 class="text-xs font-bold text-slate-700">① 배치도 형태 조절 (분실방지 줄칸 설정)</h4>
+                                        <div class="grid grid-cols-2 gap-3">
+                                            <div>
+                                                <label class="block text-[11px] font-medium text-slate-500 mb-1">세로 분반 줄수 (행)</label>
+                                                <input type="number" min="2" max="10" value={settingsRows} onChange={(e) => setSettingsRows(parseInt(e.target.value, 10) || 5)} class="w-full bg-white border border-slate-200 rounded-lg p-2 text-sm font-bold focus:outline-none" />
+                                            </div>
+                                            <div>
+                                                <label class="block text-[11px] font-medium text-slate-500 mb-1">가로 책상 칸수 (열)</label>
+                                                <input type="number" min="2" max="12" value={settingsCols} onChange={(e) => setSettingsCols(parseInt(e.target.value, 10) || 6)} class="w-full bg-white border border-slate-200 rounded-lg p-2 text-sm font-bold focus:outline-none" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="bg-slate-50 p-4 rounded-xl border border-slate-100 flex flex-col gap-2">
+                                        <h4 class="text-xs font-bold text-slate-700 flex items-center gap-1.5"><IconUpload />② 엑셀 붙여넣기 및 배치 선택</h4>
+                                        <textarea rows="3" value={excelPasteText} onChange={(e) => setExcelPasteText(e.target.value)} placeholder="엑셀에서 한 열을 통째로 복사해서 여기에 붙여넣거나, 쉼표로 명단을 구분하세요." class="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs font-medium resize-none focus:outline-none" />
+                                        <div class="grid grid-cols-2 gap-2 mt-1">
+                                            <button onClick={() => handleImportStudents(false)} class="bg-white hover:bg-slate-100 text-slate-800 border border-slate-200 text-[11px] font-bold py-2 rounded-lg transition-all">🔢 명렬순 순서대로 배치</button>
+                                            <button onClick={() => handleImportStudents(true)} class="bg-blue-500 hover:bg-blue-600 text-white text-[11px] font-bold py-2 rounded-lg transition-all">🎲 무작위 랜덤 자리 믹스</button>
+                                        </div>
+                                    </div>
+                                    <div class="bg-slate-50 p-4 rounded-xl border border-slate-100 flex flex-col justify-between gap-3">
+                                        <div>
+                                            <h4 class="text-xs font-bold text-slate-700 mb-1">③ 파일 호스팅 또는 전체 초기화</h4>
+                                            <label class="flex flex-col items-center justify-center w-full h-14 border border-dashed border-slate-300 rounded-lg bg-white cursor-pointer hover:bg-slate-50">
+                                                <p class="text-[10px] font-medium text-slate-400">학생명단 .csv 파일 선택</p>
+                                                <input type="file" accept=".csv" onChange={handleCSVUpload} class="hidden" />
+                                            </label>
+                                        </div>
+                                        <div class="flex gap-2">
+                                            <button onClick={handleResetSystem} class="flex-1 bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-100 text-xs font-bold py-2 rounded-lg"><IconTrash /> 전체 포맷</button>
+                                            <button onClick={() => { setGridRows(settingsRows); setGridCols(settingsCols); setIsSettingsOpen(false); }} class="flex-1 bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-100 text-xs font-bold py-2 rounded-lg">적용 및 창 닫기</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                {settingsStatusMessage && <div class="mt-3 bg-blue-50/50 border border-blue-100 text-blue-700 text-xs font-bold p-2 rounded-lg">{settingsStatusMessage}</div>}
+                            </section>
+                        )}
 
-          </div>
+                        {/* Top Main: Seating Grid Chart */}
+                        <section class="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-none flex flex-col gap-4">
+                            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 border-b border-slate-100 pb-3 no-print">
+                                <h2 class="text-sm font-bold text-slate-800 flex items-center gap-2">🏫 우리 반 교실 자리배치 현황판</h2>
+                                <div class="flex flex-wrap items-center gap-2 text-[10px] font-bold">
+                                    <span class="flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-50 border border-slate-200 text-slate-400"><span class="w-1.5 h-1.5 rounded-full bg-slate-300"></span>출석</span>
+                                    <span class="flex items-center gap-1 px-1.5 py-0.5 rounded bg-rose-50 border border-rose-200 text-rose-600"><span class="w-1.5 h-1.5 rounded-full bg-rose-400"></span>결석</span>
+                                    <span class="flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-600"><span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>지각</span>
+                                    <span class="flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-50 border border-purple-200 text-purple-600"><span class="w-1.5 h-1.5 rounded-full bg-purple-400"></span>조퇴</span>
+                                </div>
+                            </div>
 
-          {/* Right panel: Monthly Timeline Lists & Logs (7 cols) */}
-          <div className="lg:col-span-7 bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm flex flex-col gap-4">
-            
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-slate-100 pb-3">
-              <div>
-                <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                  <Calendar className="w-4 h-4 text-blue-500" />
-                  월별 날짜순 출결 히스토리
-                </h2>
-                <p className="text-[10px] text-slate-400 mt-0.5">
-                  해당 월의 조퇴, 지각, 결석 누적 현황을 간편하게 확인합니다.
-                </p>
-              </div>
+                            <div class="w-full max-w-xs mx-auto text-center py-1 bg-slate-50 border border-slate-200 text-slate-400 font-bold text-[9px] rounded-md tracking-wider no-print">칠판 방향 (교탁)</div>
 
-              {/* Month Selector dropdown - hidden in print */}
-              <select
-                value={selectedMonth}
-                onChange={(e) => setSelectedMonth(e.target.value)}
-                className="bg-white border border-slate-200 font-bold text-xs py-1 px-2.5 rounded-lg focus:outline-none no-print"
-              >
-                <option value="2026-06">2026년 6월</option>
-                <option value="2026-05">2026년 5월</option>
-                <option value="2026-04">2026년 4월</option>
-              </select>
-            </div>
+                            <div class="grid gap-3 print-grid" style={{ gridTemplateColumns: `repeat(${gridCols}, minmax(0, 1fr))` }}>
+                                {seatLayout.map((student, index) => {
+                                    const todayLog = student ? todaysLogsMap[student.id] : null;
+                                    return (
+                                        <div key={index} onClick={() => handleSeatClick(index)} class={`h-16 border rounded-xl p-2 flex flex-col justify-between cursor-pointer transition-all ${student ? 'bg-white hover:bg-slate-50/50 border-slate-200' : 'bg-slate-50 border-dashed border-slate-200 text-slate-300 cursor-not-allowed justify-center items-center'}`}>
+                                            {student ? (
+                                                <>
+                                                    <div class="flex justify-between items-center text-[9px]">
+                                                        <span class="font-mono text-slate-300">#{student.seatNo}</span>
+                                                        {todayLog && <span class={`font-bold px-1 rounded-[4px] text-[8px] ${getStatusBadgeStyle(todayLog.status)}`}>{todayLog.status === 'absent' ? '결석' : todayLog.status === 'late' ? `지각(${todayLog.period})` : `조퇴(${todayLog.period})`}</span>}
+                                                    </div>
+                                                    <div class="text-center font-bold text-sm text-slate-700">{student.name}</div>
+                                                    <div class="flex justify-center items-center h-3 text-[8px]">
+                                                        {todayLog ? (
+                                                            todayLog.isDocumentCompleted ? <span class="text-emerald-600 font-medium flex items-center gap-0.5"><IconCheckCircle />서류완료</span> :
+                                                            calculateDocStatus(todayLog.date, todayLog.isDocumentCompleted, currentDate) === 'overdue' ? 
+                                                            <span class="text-rose-600 font-bold flex items-center gap-0.5 animate-pulse"><IconAlertTriangle />미제출!</span> :
+                                                            <span class="text-amber-600 font-medium flex items-center gap-0.5"><IconClock />서류대기</span>
+                                                        ) : <span class="text-slate-300 font-medium flex items-center gap-0.5"><IconUserCheck />정상등교</span>}
+                                                    </div>
+                                                </>
+                                            ) : <span class="text-[9px] font-medium text-slate-300">빈자리</span>}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </section>
 
-            {monthlyGroupedLogs.length === 0 ? (
-              <div className="py-12 text-center text-slate-400 font-bold bg-slate-50/50 rounded-xl border border-dashed border-slate-200 text-xs">
-                {selectedMonth} 월에 등록된 출결 기록 변동 사항이 없습니다.
-              </div>
-            ) : (
-              <div className="flex flex-col gap-4 max-h-[350px] overflow-y-auto pr-1">
-                {monthlyGroupedLogs.map(group => (
-                  <div key={group.date} className="border border-slate-200/80 rounded-xl overflow-hidden shadow-sm">
-                    
-                    {/* Header bar of each date */}
-                    <div className="bg-slate-50 border-b border-slate-200/80 py-2 px-3 flex justify-between items-center text-xs">
-                      <span className="font-bold font-mono text-slate-700">{group.date}</span>
-                      <span className="text-[10px] bg-slate-200/70 text-slate-600 px-2 py-0.5 rounded-full font-bold">
-                        변동 {group.logs.length}건
-                      </span>
-                    </div>
-
-                    <div className="divide-y divide-slate-100 bg-white">
-                      {group.logs.map(log => (
-                        <div key={log.id} className="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                          
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-bold text-slate-800 text-sm min-w-[55px]">{log.studentName}</span>
+                        {/* Bottom Double Screen Layout */}
+                        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
                             
-                            <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${getStatusBadgeStyle(log.status)}`}>
-                              {getStatusLabel(log.status)}{log.period ? ` (${log.period})` : ''}
-                            </span>
+                            {/* Left View: Outstanding Documents */}
+                            <div class="lg:col-span-5 bg-white border border-slate-200 rounded-2xl p-5 flex flex-col gap-4">
+                                <div class="border-b border-slate-100 pb-3">
+                                    <h2 class="text-xs font-bold text-slate-700 flex items-center gap-2">
+                                        <IconFileText />
+                                        미제출 서류 추적 보관함
+                                        <span class="bg-rose-50 text-rose-600 text-[9px] py-0.5 px-2 rounded-full border border-rose-100 font-bold">미비 {outstandingDocuments.length}건</span>
+                                    </h2>
+                                </div>
+                                {outstandingDocuments.length === 0 ? (
+                                    <div class="py-12 text-center text-slate-400 font-medium bg-slate-50/50 rounded-xl border border-dashed border-slate-200 text-xs flex flex-col items-center justify-center gap-1">
+                                        <IconCheckCircle />
+                                        <span>밀린 결석계 및 증빙 서류가 없습니다.</span>
+                                    </div>
+                                ) : (
+                                    <div class="flex flex-col gap-2 max-h-[300px] overflow-y-auto pr-1">
+                                        {outstandingDocuments.map(log => (
+                                            <div key={log.id} class={`border rounded-xl p-3 flex flex-col gap-2 ${log.calculatedStatus === 'overdue' ? 'bg-rose-50/30 border-rose-100' : 'bg-amber-50/30 border-amber-100'}`}>
+                                                <div class="flex justify-between items-center text-xs">
+                                                    <span class="font-bold text-slate-800">{log.studentName}</span>
+                                                    <span class="text-[9px] font-mono bg-white px-1.5 py-0.5 border border-slate-200 rounded text-slate-500">{log.date}</span>
+                                                </div>
+                                                <div class="flex items-center gap-1.5 text-[9px] font-bold">
+                                                    <span class={`px-1 py-0.2 rounded ${getStatusBadgeStyle(log.status)}`}>{log.status === 'absent' ? '결석' : log.status === 'late' ? '지각' : '조퇴'}{log.period ? `(${log.period})` : ''}</span>
+                                                    <span class={`px-1 py-0.2 rounded ${getTypeColorClass(log.type)}`}>{getTypeLabel(log.type)}</span>
+                                                    {log.calculatedStatus === 'overdue' && <span class="text-rose-600 bg-white border border-rose-100 px-1 rounded">🚨 3일 이상 연체</span>}
+                                                </div>
+                                                <p class="text-[10px] text-slate-400 bg-white/80 p-1.5 rounded border border-slate-100 italic">"{log.memo || '사유가 기록되지 않았습니다.'}"</p>
+                                                <button onClick={() => toggleDocumentCompletion(log.id)} class="w-full bg-[#10B981] hover:bg-emerald-600 text-white font-bold text-[10px] py-1.5 rounded-lg transition-colors no-print">✓ 서류 수거 확인</button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
 
-                            <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${getTypeColorClass(log.type)}`}>
-                              {getTypeLabel(log.type)}
-                            </span>
-
-                            <span className="text-slate-500 bg-slate-50 px-2 py-0.5 border border-slate-100 rounded text-[11px] italic">
-                              {log.memo || <span className="text-slate-300 italic">메모 없음</span>}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center gap-2 justify-end no-print">
-                            {log.isDocumentCompleted ? (
-                              <span className="text-[10px] font-bold bg-emerald-50 text-emerald-700 py-1 px-2.5 rounded-lg border border-emerald-200">
-                                서류 수거완료
-                              </span>
-                            ) : (
-                              (() => {
-                                if (log.calculatedStatus === 'overdue') {
-                                  return (
-                                    <span className="text-[10px] font-extrabold bg-rose-50 text-rose-700 py-1 px-2.5 rounded-lg border border-rose-200 animate-pulse">
-                                      미제출 🚨
-                                    </span>
-                                  );
-                                } else {
-                                  return (
-                                    <span className="text-[10px] font-bold bg-amber-50 text-amber-700 py-1 px-2.5 rounded-lg border border-amber-200">
-                                      제출 대기중
-                                    </span>
-                                  );
-                                }
-                              })()
-                            )}
-
-                            <button
-                              onClick={() => toggleDocumentCompletion(log.id)}
-                              className={`text-[10px] font-bold py-1 px-2 rounded-lg border transition-colors ${
-                                log.isDocumentCompleted 
-                                  ? 'bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-700' 
-                                  : 'bg-emerald-50 hover:bg-emerald-100 border-emerald-200 text-emerald-700'
-                              }`}
-                            >
-                              {log.isDocumentCompleted ? '미제출로 복원' : '수거 완료'}
-                            </button>
-                          </div>
+                            {/* Right View: Monthly Log Archive */}
+                            <div class="lg:col-span-7 bg-white border border-slate-200 rounded-2xl p-5 flex flex-col gap-4">
+                                <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                                    <h2 class="text-xs font-bold text-slate-700 flex items-center gap-2"><IconCalendar />월별 변동 내역 타임라인</h2>
+                                    <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} class="bg-white border border-slate-200 font-bold text-[10px] py-1 px-2 rounded-lg focus:outline-none no-print">
+                                        <option value="2026-06">2026년 6월</option>
+                                        <option value="2026-05">2026년 5월</option>
+                                        <option value="2026-04">2026년 4월</option>
+                                    </select>
+                                </div>
+                                {monthlyGroupedLogs.length === 0 ? (
+                                    <div class="py-16 text-center text-slate-400 font-medium bg-slate-50/50 rounded-xl border border-dashed border-slate-200 text-xs">선택하신 월에 집계된 조퇴/결석 히스토리가 없습니다.</div>
+                                ) : (
+                                    <div class="flex flex-col gap-3 max-h-[300px] overflow-y-auto pr-1">
+                                        {monthlyGroupedLogs.map(group => (
+                                            <div key={group.date} class="border border-slate-200 rounded-xl overflow-hidden">
+                                                <div class="bg-slate-50 border-b border-slate-200 py-1.5 px-3 flex justify-between items-center text-[11px] font-bold text-slate-600 font-mono">
+                                                    <span>{group.date}</span>
+                                                </div>
+                                                <div class="divide-y divide-slate-100 bg-white">
+                                                    {group.logs.map(log => (
+                                                        <div key={log.id} class="p-2.5 flex items-center justify-between gap-2 text-xs">
+                                                            <div class="flex flex-wrap items-center gap-1.5">
+                                                                <span class="font-bold text-slate-800 min-w-[50px]">{log.studentName}</span>
+                                                                <span class={`text-[9px] font-bold px-1.5 py-0.2 rounded ${getStatusBadgeStyle(log.status)}`}>{log.status === 'absent' ? '결석' : log.status === 'late' ? `지각(${log.period})` : `조퇴(${log.period})`}</span>
+                                                                <span class={`text-[9px] font-bold px-1.5 py-0.2 rounded ${getTypeColorClass(log.type)}`}>{getTypeLabel(log.type)}</span>
+                                                                <span class="text-slate-400 text-[10px] italic">"{log.memo || '비고 없음'}"</span>
+                                                            </div>
+                                                            <div class="flex items-center gap-1.5 no-print">
+                                                                <button onClick={() => toggleDocumentCompletion(log.id)} class={`text-[9px] font-bold py-1 px-2 rounded-md border ${log.isDocumentCompleted ? 'bg-slate-50 border-slate-200 text-slate-500' : 'bg-emerald-50 border-emerald-200 text-emerald-700'}`}>
+                                                                    {log.isDocumentCompleted ? '제출취소' : '수거완료'}
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
 
                         </div>
-                      ))}
-                    </div>
+                    </main>
 
-                  </div>
-                ))}
-              </div>
-            )}
+                    {/* Modals */}
+                    {isModalOpen && selectedStudent && (
+                        <div class="fixed inset-0 bg-slate-900/30 backdrop-blur-[1px] flex items-center justify-center p-4 z-50 no-print">
+                            <div class="bg-white border border-slate-200 rounded-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+                                <div class="bg-slate-900 text-white p-4 flex justify-between items-center">
+                                    <div>
+                                        <span class="text-[9px] text-slate-400 font-mono">#{selectedStudent.seatNo} 좌석 배정</span>
+                                        <h4 class="text-sm font-bold mt-0.5">{selectedStudent.name} 학생 당일 출결 상태 기록</h4>
+                                    </div>
+                                    <button onClick={closeModal} class="text-slate-400 hover:text-white p-1"><IconX /></button>
+                                </div>
+                                <div class="p-5 flex flex-col gap-4">
+                                    <div>
+                                        <label class="block text-[10px] font-bold text-slate-400 mb-1">출결 변동 사항</label>
+                                        <div class="grid grid-cols-4 gap-1.5">
+                                            {[
+                                                { key: 'present', label: '정상등교' }, { key: 'absent', label: '결석 🔴' },
+                                                { key: 'late', label: '지각 🟡' }, { key: 'early', label: '조퇴 🟣' }
+                                            ].map(opt => (
+                                                <button key={opt.key} type="button" onClick={() => {
+                                                    setFormStatus(opt.key);
+                                                    if (opt.key === 'present') setFormDocCompleted(false);
+                                                    setFormPeriod(opt.key === 'late' ? '조례' : '1교시');
+                                                }} class={`py-1.5 rounded-lg border text-xs font-bold transition-all ${formStatus === opt.key ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-slate-200 bg-white text-slate-600'}`}>
+                                                    {opt.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
 
-          </div>
+                                    {formStatus === 'late' && (
+                                        <div class="animate-in fade-in slide-in-from-top-1 duration-100">
+                                            <label class="block text-[10px] font-bold text-slate-400 mb-1">지각 타임 (조례 ~ 교시)</label>
+                                            <div class="grid grid-cols-4 gap-1 text-center">
+                                                {latePeriods.map(p => (
+                                                    <button key={p} type="button" onClick={() => setFormPeriod(p)} class={`py-1 rounded-md border font-bold text-[9px] ${formPeriod === p ? 'border-slate-800 bg-slate-800 text-white' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>{p}</button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
 
-        </div>
+                                    {formStatus === 'early' && (
+                                        <div class="animate-in fade-in slide-in-from-top-1 duration-100">
+                                            <label class="block text-[10px] font-bold text-slate-400 mb-1">조퇴 타임 (교시 ~ 종례)</label>
+                                            <div class="grid grid-cols-4 gap-1 text-center">
+                                                {earlyPeriods.map(p => (
+                                                    <button key={p} type="button" onClick={() => setFormPeriod(p)} class={`py-1 rounded-md border font-bold text-[9px] ${formPeriod === p ? 'border-slate-800 bg-slate-800 text-white' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>{p}</button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
 
-      </main>
+                                    {formStatus !== 'present' && (
+                                        <>
+                                            <div>
+                                                <label class="block text-[10px] font-bold text-slate-400 mb-1">사유 분류</label>
+                                                <div class="grid grid-cols-3 gap-1.5">
+                                                    {[{ key: 'sick', label: '질병결' }, { key: 'authorized', label: '인정결' }, { key: 'unauthorized', label: '미인정' }].map(opt => (
+                                                        <button key={opt.key} type="button" onClick={() => setFormType(opt.key)} class={`py-1 rounded-md border text-xs font-bold ${formType === opt.key ? 'border-slate-800 bg-slate-800 text-white' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>{opt.label}</button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label class="block text-[10px] font-bold text-slate-400 mb-1">상세 사유 (나이스 복사 기록용)</label>
+                                                <input type="text" value={formMemo} onChange={(e) => setFormMemo(e.target.value)} placeholder="예) 감기로 병원 진료 후 등교" class="w-full border border-slate-200 rounded-xl py-1.5 px-3 text-xs font-bold focus:outline-none focus:border-slate-400" />
+                                            </div>
+                                            <div>
+                                                <label class="block text-[10px] font-bold text-slate-400 mb-1">학부모 제출 의무 서류 상태</label>
+                                                <div class="grid grid-cols-2 gap-2">
+                                                    <button type="button" onClick={() => setFormDocCompleted(false)} class={`py-2 border text-xs font-bold rounded-xl flex items-center justify-center gap-1 ${!formDocCompleted ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-white border-slate-200 text-slate-400'}`}><IconClock />아직 미수거</button>
+                                                    <button type="button" onClick={() => setFormDocCompleted(true)} class={`py-2 border text-xs font-bold rounded-xl flex items-center justify-center gap-1 ${formDocCompleted ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-white border-slate-200 text-slate-400'}`}><IconCheckCircle />제출 완료</button>
+                                                </div>
+                                            </div>
+                                        </>
+                                    )}
 
-      {/* ==================== ATTENDANCE RECORDING DIALOG (MODAL) ==================== */}
-      {isModalOpen && selectedStudent && (
-        <div className="fixed inset-0 bg-slate-800/40 backdrop-blur-[2px] flex items-center justify-center p-4 z-50 no-print">
-          
-          <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-md overflow-hidden shadow-xl animate-in fade-in zoom-in-95 duration-150">
-            
-            {/* Modal Title strip */}
-            <div className="bg-slate-900 text-white p-5 flex justify-between items-center">
-              <div>
-                <span className="text-[10px] font-bold text-blue-300 tracking-wider">#자리 배정번호 {selectedStudent.seatNo}번 좌석</span>
-                <h4 className="text-base font-bold text-white mt-0.5">
-                  {selectedStudent.name} 학생 아침 출결 변경
-                </h4>
-              </div>
-              <button 
-                onClick={closeModal}
-                className="bg-slate-800 hover:bg-slate-700 p-1.5 rounded-lg text-slate-400 hover:text-white transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+                                    <div class="flex gap-2 mt-2 pt-3 border-t border-slate-100">
+                                        <button type="button" onClick={closeModal} class="flex-1 bg-white hover:bg-slate-50 text-slate-600 font-bold text-xs py-2 rounded-xl border border-slate-200">취소</button>
+                                        <button type="button" onClick={handleSaveAttendance} class="flex-1 bg-blue-500 hover:bg-blue-600 text-white font-bold text-xs py-2 rounded-xl">저장 및 업데이트</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
-            {/* Form details */}
-            <div className="p-6 flex flex-col gap-4">
-              
-              {/* Part 1: Main Attendance Status */}
-              <div>
-                <label className="block text-[11px] font-bold text-slate-500 mb-1.5">출결 상태</label>
-                <div className="grid grid-cols-4 gap-1.5">
-                  {[
-                    { key: 'present', label: '출석 🟢' },
-                    { key: 'absent', label: '결석 🔴' },
-                    { key: 'late', label: '지각 🟡' },
-                    { key: 'early', label: '조퇴 🟣' }
-                  ].map(option => (
-                    <button
-                      key={option.key}
-                      type="button"
-                      onClick={() => {
-                        setFormStatus(option.key);
-                        if (option.key === 'present') {
-                          setFormDocCompleted(false);
-                        }
-                        // Default period presets based on status
-                        if (option.key === 'late') {
-                          setFormPeriod("조례");
-                        } else if (option.key === 'early') {
-                          setFormPeriod("1교시");
-                        }
-                      }}
-                      className={`py-2 px-1 rounded-xl border font-bold text-xs transition-all ${
-                        formStatus === option.key 
-                          ? 'border-blue-500 bg-blue-50 text-blue-600' 
-                          : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-                      }`}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
+                    {/* Footer */}
+                    <footer class="bg-slate-900 text-slate-400 py-4 text-center text-[10px] font-medium border-t border-slate-800 no-print">
+                        <span>© 2026 출결체크쌤(CheckSsam) · 100% 교사 전용 독립 로컬 데이터 스토리지</span>
+                    </footer>
                 </div>
-              </div>
+            );
+        }
 
-              {/* Part 1-2: Occurrence Period - Conditionally rendered & adjusted */}
-              {formStatus === 'late' && (
-                <div className="animate-in fade-in slide-in-from-top-1 duration-150">
-                  <label className="block text-[11px] font-bold text-slate-500 mb-1.5">지각 발생 시점 (조례 ~ O교시)</label>
-                  <div className="grid grid-cols-4 gap-1 text-center">
-                    {latePeriods.map(p => (
-                      <button
-                        key={p}
-                        type="button"
-                        onClick={() => setFormPeriod(p)}
-                        className={`py-1.5 rounded-lg border font-bold text-[10px] transition-all ${
-                          formPeriod === p 
-                            ? 'border-slate-800 bg-slate-800 text-white' 
-                            : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
-                        }`}
-                      >
-                        {p}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {formStatus === 'early' && (
-                <div className="animate-in fade-in slide-in-from-top-1 duration-150">
-                  <label className="block text-[11px] font-bold text-slate-500 mb-1.5">조퇴 발생 시점 (O교시 ~ 종례)</label>
-                  <div className="grid grid-cols-4 gap-1 text-center">
-                    {earlyPeriods.map(p => (
-                      <button
-                        key={p}
-                        type="button"
-                        onClick={() => setFormPeriod(p)}
-                        className={`py-1.5 rounded-lg border font-bold text-[10px] transition-all ${
-                          formPeriod === p 
-                            ? 'border-slate-800 bg-slate-800 text-white' 
-                            : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
-                        }`}
-                      >
-                        {p}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Show details ONLY if abnormal/not present */}
-              {formStatus !== 'present' && (
-                <>
-                  {/* Part 2: Reason Type classification */}
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-500 mb-1.5">사유 구분</label>
-                    <div className="grid grid-cols-4 gap-1.5">
-                      {[
-                        { key: 'sick', label: '질병' },
-                        { key: 'authorized', label: '인정' },
-                        { key: 'unauthorized', label: '미인정' },
-                        { key: 'other', label: '기타' }
-                      ].map(option => (
-                        <button
-                          key={option.key}
-                          type="button"
-                          onClick={() => setFormType(option.key)}
-                          className={`py-1.5 px-1 rounded-lg border font-bold text-xs transition-all ${
-                            formType === option.key 
-                              ? 'border-slate-800 bg-slate-800 text-white' 
-                              : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
-                          }`}
-                        >
-                          {option.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Part 3: Written specific reason */}
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-500 mb-1.5">상세 사유 (나이스 복붙/기록용)</label>
-                    <input
-                      type="text"
-                      value={formMemo}
-                      onChange={(e) => setFormMemo(e.target.value)}
-                      placeholder="예) 기침 감기로 병원 내원"
-                      className="w-full border border-slate-200 rounded-xl py-2 px-3 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                    />
-                  </div>
-
-                  {/* Part 4: SMART FIXED SUBMISSION TOGGLE */}
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-500 mb-1.5">증빙 서류 제출 상태</label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setFormDocCompleted(false)}
-                        className={`py-2.5 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                          !formDocCompleted
-                            ? 'bg-amber-50 border-amber-300 text-amber-700'
-                            : 'bg-white border-slate-200 text-slate-500'
-                        }`}
-                      >
-                        <Clock className="w-3.5 h-3.5" />
-                        아직 안 냄 (대기)
-                      </button>
-                      
-                      <button
-                        type="button"
-                        onClick={() => setFormDocCompleted(true)}
-                        className={`py-2.5 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                          formDocCompleted
-                            ? 'bg-emerald-50 border-emerald-300 text-emerald-700'
-                            : 'bg-white border-slate-200 text-slate-500'
-                        }`}
-                      >
-                        <CheckCircle className="w-3.5 h-3.5" />
-                        서류 제출 완료
-                      </button>
-                    </div>
-                    <p className="text-[10px] text-slate-400 mt-1.5 text-center">
-                      * 서류 대기 상태로 저장할 시, 결석일 기준 3일이 지나면 대시보드에 빨간 불이 켜집니다.
-                    </p>
-                  </div>
-                </>
-              )}
-
-              {/* Form Action Buttons */}
-              <div className="flex gap-2.5 mt-2 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={closeModal}
-                  className="flex-1 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs py-2.5 px-4 rounded-xl border border-slate-200"
-                >
-                  취소
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSaveAttendance}
-                  className="flex-1 bg-blue-500 hover:bg-blue-600 text-white font-bold text-xs py-2.5 px-4 rounded-xl shadow-sm"
-                >
-                  저장하기
-                </button>
-              </div>
-
-            </div>
-
-          </div>
-        </div>
-      )}
-
-      {/* ==================== FOOTER ==================== */}
-      <footer className="bg-slate-900 text-slate-400 py-6 px-6 mt-auto text-center text-[11px] font-medium border-t border-slate-800 no-print">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-2">
-          <span>© 2026 출결체크쌤(CheckSsam) - 현직 선생님의 개인정보보호와 아침 조회의 수월성을 위해 고안되었습니다.</span>
-          <span className="text-[#3B82F6] hover:underline cursor-pointer">데이터 로컬 100% 안전 보관 모드</span>
-        </div>
-      </footer>
-
-    </div>
-  );
-}
-
-// Simple Helper function for logs subtype translation styling
-const getTypeLabel = (type) => {
-  switch(type) {
-    case 'sick': return '질병';
-    case 'authorized': return '인정';
-    case 'unauthorized': return '미인정';
-    case 'other': return '기타';
-    default: return '';
-  }
-};
-
-const getTypeColorClass = (type) => {
-  switch(type) {
-    case 'sick': return 'bg-rose-50 text-rose-700 border border-rose-100';
-    case 'authorized': return 'bg-emerald-50 text-emerald-700 border border-emerald-100';
-    case 'unauthorized': return 'bg-slate-50 text-slate-700 border border-slate-200';
-    default: return 'bg-purple-50 text-purple-700 border border-purple-100';
-  }
-};
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>

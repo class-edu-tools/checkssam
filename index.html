@@ -348,12 +348,15 @@
                     setSettingsStatusMessage("❌ 올바른 이름이 없습니다.");
                     return;
                 }
-                if (names.length > totalSeatsCount) {
-                    setSettingsStatusMessage(`❌ 자리가 부족합니다. 칸수를 더 늘려주세요.`);
+                
+                // FIXED BUG: Compare with input target seat dimensions instead of stale layout grid dimensions
+                const targetSeatsCount = settingsRows * settingsCols;
+                if (names.length > targetSeatsCount) {
+                    setSettingsStatusMessage(`❌ 자리가 부족합니다. 줄/칸수 조절 영역에서 칸수를 더 늘려주세요.`);
                     return;
                 }
 
-                let seatIndices = Array.from({ length: totalSeatsCount }, (_, i) => i + 1);
+                let seatIndices = Array.from({ length: targetSeatsCount }, (_, i) => i + 1);
                 if (isRandomLayout) {
                     for (let i = seatIndices.length - 1; i > 0; i--) {
                         const j = Math.floor(Math.random() * (i + 1));
@@ -383,10 +386,17 @@
                         }
                     });
                     if (parsedNames.length > 0) {
+                        // FIXED BUG: Compare with input target seat dimensions instead of stale layout grid dimensions
+                        const targetSeatsCount = settingsRows * settingsCols;
+                        if (parsedNames.length > targetSeatsCount) {
+                            setSettingsStatusMessage("❌ 학생 수가 새로 설정하려는 교실 칸 수를 초과합니다.");
+                            return;
+                        }
                         const newStudents = parsedNames.map((name, index) => ({ id: index + 1, name, seatNo: index + 1 }));
                         setStudents(newStudents);
                         setGridRows(settingsRows);
                         setGridCols(settingsCols);
+                        setSettingsStatusMessage(`✅ CSV에서 ${parsedNames.length}명의 학생을 배치 완료했습니다!`);
                     }
                 };
                 reader.readAsText(file);
